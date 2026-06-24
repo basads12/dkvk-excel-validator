@@ -17,8 +17,12 @@ port = 54323
 
 [auth]
 enabled = true
-site_url = "http://localhost:3000"
-additional_redirect_urls = ["http://localhost:3000/auth/callback"]
+site_url = "https://dkvk-excel-validator.vercel.app"
+additional_redirect_urls = [
+  "http://localhost:3000/auth/callback",
+  "https://dkvk-excel-validator.vercel.app/auth/callback",
+  "https://*.vercel.app/auth/callback"
+]
 
 [auth.email]
 enable_signup = true
