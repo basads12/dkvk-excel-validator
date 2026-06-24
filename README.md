@@ -96,7 +96,9 @@ Oudere kolomnamen worden automatisch herkend: `Huisnummer` → `Nummer`, `E-mail
 
 ## Belangrijk
 
-De app **verzint nooit gegevens**. Bij twijfel wordt een rij gemarkeerd als "Controle nodig". De mock adresprovider (`lib/address/mock-provider.ts`) moet vervangen worden door een echte bron (PDOK/BAG/PostNL).
+De app **verzint nooit gegevens**. Bij twijfel wordt een rij gemarkeerd als "Controle nodig".
+
+**Adresvalidatie** loopt via [PDOK Locatieserver](https://api.pdok.nl/bzk/locatieserver/search/v3_1/ui/) (overheidsdata, geen AI). Mock-provider blijft beschikbaar via `ADDRESS_PROVIDER=mock`.
 
 ## AVG / Privacy
 

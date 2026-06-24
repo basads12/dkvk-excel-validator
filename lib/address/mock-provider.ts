@@ -178,4 +178,3 @@ function levenshtein(a: string, b: string): number {
   return matrix[a.length]![b.length]!;
 }
 
-export const defaultAddressProvider = new MockAddressValidationProvider();

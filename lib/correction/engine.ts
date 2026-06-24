@@ -1,5 +1,5 @@
 import type { ProposedCorrection, RowStatus, TemplateColumnSchema } from "@/types";
-import { defaultAddressProvider } from "@/lib/address/mock-provider";
+import { defaultAddressProvider } from "@/lib/address";
 import {
   HIGH_CONFIDENCE_THRESHOLD,
   type AddressValidationProvider,
@@ -105,7 +105,7 @@ async function applyAddressCorrections(
         proposedValue: street,
         status: "ambiguous",
         confidence: 0.5,
-        source: "mock-pdok",
+        source: streetSuggestions[0]?.source ?? "pdok-locatieserver",
         reason: `Meerdere straatnamen mogelijk: ${streetSuggestions.map((s) => s.street).join(", ")}`,
         requiresApproval: false,
       });
