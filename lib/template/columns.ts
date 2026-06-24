@@ -1,3 +1,5 @@
+import type { TemplateColumnSchema } from "@/types";
+
 /** Canonical aanlevering-kolommen (Vloerenfabriek-template) */
 export const DEFAULT_COLUMN_HEADERS = [
   "Aanhef",

@@ -19,6 +19,24 @@ Interne webapp voor medewerkers van **De Kunst van Kunst** om Excel-adreslijsten
 
 ## Supabase setup
 
+### Optie A — Via Cursor MCP (aanbevolen)
+
+1. **Herstart Cursor** of ga naar **Settings → Tools & MCP**
+2. Zoek **supabase** en klik **Connect** / **Login**
+3. Log in met je Supabase-account en kies je organisatie
+4. Vraag daarna in Cursor: *"Maak een Supabase project aan voor dkvk-excel-validator en push de migraties"*
+
+MCP-config staat in [`.cursor/mcp.json`](.cursor/mcp.json) (project) en `~/.mcp.json` (global).
+
+### Project (live)
+
+- **Project:** `dkvk-excel-validator`
+- **Ref:** `iouqdjegevcufdpdabne`
+- **Dashboard:** https://supabase.com/dashboard/project/iouqdjegevcufdpdabne
+- **Regio:** eu-west-1 (Ireland)
+
+Lokaal gekoppeld via `supabase link`. Migraties zijn gepusht. `.env.local` staat lokaal (niet in git).
+
 1. Maak een nieuw project aan in de **EU-regio** (bijv. Frankfurt) op [supabase.com](https://supabase.com)
 2. Ga naar **Authentication → URL Configuration** en voeg toe:
    - Site URL: `http://localhost:3000`
