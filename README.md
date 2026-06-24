@@ -1,36 +1,85 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# DKVK Excel Validator
 
-## Getting Started
+Interne webapp voor medewerkers van **De Kunst van Kunst** om Excel-adreslijsten te valideren, corrigeren en exporteren.
 
-First, run the development server:
+## Functies (MVP)
+
+- Magic link login (alleen `@dekunstvankunst.nl`)
+- Template upload (voorbeeld-Excel als structuur)
+- Excel upload met validatie en correctievoorstellen
+- Reviewpagina met goedkeuren/afwijzen/handmatig wijzigen
+- Export naar Excel met audit-tabblad
+
+## Stack
+
+- Next.js 16, TypeScript, Tailwind CSS
+- Supabase (Auth, PostgreSQL, Storage)
+- ExcelJS voor parse/export
+- Vitest voor unit tests
+
+## Supabase setup
+
+1. Maak een nieuw project aan in de **EU-regio** (bijv. Frankfurt) op [supabase.com](https://supabase.com)
+2. Ga naar **Authentication → URL Configuration** en voeg toe:
+   - Site URL: `http://localhost:3000`
+   - Redirect URLs: `http://localhost:3000/auth/callback`
+3. Schakel **Email (Magic Link)** in onder Authentication → Providers
+4. Configureer SMTP voor betrouwbare e-mail (Settings → Auth → SMTP)
+5. Voer migraties uit via SQL Editor of Supabase CLI:
+   ```bash
+   npx supabase login
+   npx supabase link --project-ref YOUR_PROJECT_REF
+   npx supabase db push
+   ```
+   Of kopieer de SQL uit `supabase/migrations/` naar de SQL Editor.
+6. Controleer dat storage buckets `templates`, `uploads`, `exports` bestaan (migratie 002)
+
+## Lokaal draaien
 
 ```bash
+cp .env.example .env.local
+# Vul Supabase credentials in
+npm install
 npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+Open [http://localhost:3000](http://localhost:3000)
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+## Tests
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+```bash
+npm test
+```
 
-## Learn More
+## Pagina's
 
-To learn more about Next.js, take a look at the following resources:
+| Route | Beschrijving |
+|---|---|
+| `/login` | Inloggen met magic link |
+| `/dashboard` | Upload + overzicht |
+| `/templates` | Template beheer |
+| `/uploads/[id]` | Upload detail |
+| `/uploads/[id]/review` | Controle en goedkeuring |
+| `/uploads/[id]/export` | Excel download |
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+## Referentie-template
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+De standaard kolomvolgorde volgt het aanleverformaat van De Kunst van Kunst:
 
-## Deploy on Vercel
+| Aanhef | Naam | Adres | Nummer | Postcode | Woonplaats | Email | Tel/mobiel |
 
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
+Referentiebestand: `tests/fixtures/vloerenfabriek-template.xlsx` (kopregel op rij 3, kolom B).
 
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+De parser detecteert automatisch de kopregel, ook als er een titelrij boven staat (bijv. "Aanleveren adressen").
+
+## Referentie-template (legacy aliassen)
+
+Oudere kolomnamen worden automatisch herkend: `Huisnummer` → `Nummer`, `E-mail` → `Email`, `Telefoon/Mobiel` → `Tel/mobiel`.
+
+## Belangrijk
+
+De app **verzint nooit gegevens**. Bij twijfel wordt een rij gemarkeerd als "Controle nodig". De mock adresprovider (`lib/address/mock-provider.ts`) moet vervangen worden door een echte bron (PDOK/BAG/PostNL).
+
+## AVG / Privacy
+
+Bestanden bevatten mogelijk persoonsgegevens. Storage buckets zijn private met RLS. Uploads zijn gekoppeld aan ingelogde gebruikers.
