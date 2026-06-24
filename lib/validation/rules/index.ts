@@ -1,26 +1,32 @@
-import type {
-  CorrectionStatus,
-  ProposedCorrection,
-  TemplateColumnSchema,
-} from "@/types";
+import type { CorrectionStatus, ProposedCorrection } from "@/types";
 import {
   isValidDutchPostcode,
   isValidEmail,
   isValidPhone,
   normalizePostcode,
 } from "../normalize";
+import {
+  formatPhoneDisplay,
+  normalizeEmail,
+  suggestEmail,
+} from "../format";
+import type { ValidationContext, ValidationRule } from "../types";
+import { aanhefRule, naamRule } from "./aanhef-naam";
 
-export interface ValidationContext {
-  rowIndex: number;
-  values: Record<string, string>;
-  templateSchema: TemplateColumnSchema;
-  allRows: Record<string, string>[];
-}
+export type { ValidationContext, ValidationRule } from "../types";
+export { worstStatus } from "../types";
 
-export interface ValidationRule {
-  id: string;
-  name: string;
-  validate(ctx: ValidationContext): ProposedCorrection[];
+function findColumnByType(
+  ctx: ValidationContext,
+  dataType: string,
+  fallbackNames: string[] = []
+) {
+  return (
+    ctx.templateSchema.columns.find((c) => c.dataType === dataType) ??
+    ctx.templateSchema.columns.find((c) =>
+      fallbackNames.some((n) => c.name.toLowerCase() === n.toLowerCase())
+    )
+  );
 }
 
 export const requiredFieldsRule: ValidationRule = {
@@ -53,7 +59,7 @@ export const dutchPostcodeRule: ValidationRule = {
   id: "dutch-postcode",
   name: "Nederlandse postcode",
   validate(ctx) {
-    const col = ctx.templateSchema.columns.find((c) => c.dataType === "postcode");
+    const col = findColumnByType(ctx, "postcode", ["Postcode"]);
     if (!col) return [];
     const value = ctx.values[col.name]?.trim() ?? "";
     if (!value) return [];
@@ -66,10 +72,10 @@ export const dutchPostcodeRule: ValidationRule = {
             rowIndex: ctx.rowIndex,
             originalValue: value,
             proposedValue: normalized,
-            status: "corrected",
+            status: "needs_review",
             confidence: 0.98,
             source: "dutch-postcode",
-            reason: "Postcode genormaliseerd naar formaat 1234 AB",
+            reason: "Controleer postcode. Voorgesteld formaat: 1234 AB",
             requiresApproval: true,
           },
         ];
@@ -80,11 +86,11 @@ export const dutchPostcodeRule: ValidationRule = {
           rowIndex: ctx.rowIndex,
           originalValue: value,
           proposedValue: value,
-          status: "error",
+          status: "needs_review",
           confidence: 1,
           source: "dutch-postcode",
-          reason: "Ongeldige Nederlandse postcode",
-          requiresApproval: false,
+          reason: "Ongeldige Nederlandse postcode — handmatig controleren",
+          requiresApproval: true,
         },
       ];
     }
@@ -96,10 +102,28 @@ export const emailFormatRule: ValidationRule = {
   id: "email-format",
   name: "E-mailformaat",
   validate(ctx) {
-    const col = ctx.templateSchema.columns.find((c) => c.dataType === "email");
+    const col = findColumnByType(ctx, "email", ["Email", "E-mail"]);
     if (!col) return [];
     const value = ctx.values[col.name]?.trim() ?? "";
     if (!value) return [];
+
+    const suggested = suggestEmail(value);
+    if (suggested && isValidEmail(suggested)) {
+      return [
+        {
+          column: col.name,
+          rowIndex: ctx.rowIndex,
+          originalValue: value,
+          proposedValue: suggested,
+          status: "needs_review",
+          confidence: 0.95,
+          source: "email-format",
+          reason: `Controleer e-mailadres. Voorgesteld: "${suggested}"`,
+          requiresApproval: true,
+        },
+      ];
+    }
+
     if (!isValidEmail(value)) {
       return [
         {
@@ -107,14 +131,15 @@ export const emailFormatRule: ValidationRule = {
           rowIndex: ctx.rowIndex,
           originalValue: value,
           proposedValue: value,
-          status: "error",
+          status: "needs_review",
           confidence: 1,
           source: "email-format",
-          reason: "Ongeldig e-mailadres",
-          requiresApproval: false,
+          reason: "Ongeldig e-mailadres — handmatig controleren",
+          requiresApproval: true,
         },
       ];
     }
+
     return [];
   },
 };
@@ -123,32 +148,63 @@ export const phoneFormatRule: ValidationRule = {
   id: "phone-format",
   name: "Telefoonformaat",
   validate(ctx) {
-    const col = ctx.templateSchema.columns.find((c) => c.dataType === "phone");
+    const col = findColumnByType(ctx, "phone", ["Tel/mobiel", "Telefoon/Mobiel"]);
     if (!col) return [];
     const value = ctx.values[col.name]?.trim() ?? "";
     if (!value) return [];
+
+    const formatted = formatPhoneDisplay(value);
+
+    if (formatted && formatted !== value && isValidPhone(formatted)) {
+      return [
+        {
+          column: col.name,
+          rowIndex: ctx.rowIndex,
+          originalValue: value,
+          proposedValue: formatted,
+          status: "needs_review",
+          confidence: 0.93,
+          source: "phone-format",
+          reason: `Controleer telefoonnummer. Voorgesteld: "${formatted}"`,
+          requiresApproval: true,
+        },
+      ];
+    }
+
     if (!isValidPhone(value)) {
       return [
         {
           column: col.name,
           rowIndex: ctx.rowIndex,
           originalValue: value,
-          proposedValue: value,
+          proposedValue: formatted ?? value,
           status: "needs_review",
-          confidence: 0.5,
+          confidence: 0.6,
           source: "phone-format",
-          reason: "Telefoonnummer voldoet niet aan NL-formaat",
-          requiresApproval: false,
+          reason: "Telefoonnummer voldoet niet aan NL-formaat — handmatig controleren",
+          requiresApproval: true,
         },
       ];
     }
+
     return [];
   },
 };
 
-function rowHash(values: Record<string, string>): string {
-  const keys = ["Naam", "Adres", "Postcode"];
-  return keys.map((k) => values[k]?.toLowerCase().trim() ?? "").join("|");
+export const validationRules: ValidationRule[] = [
+  requiredFieldsRule,
+  aanhefRule,
+  naamRule,
+  dutchPostcodeRule,
+  emailFormatRule,
+  phoneFormatRule,
+];
+
+export function runValidationRules(
+  ctx: ValidationContext,
+  rules: ValidationRule[] = validationRules
+): ProposedCorrection[] {
+  return rules.flatMap((rule) => rule.validate(ctx));
 }
 
 export function createDuplicateRowsRule(): ValidationRule {
@@ -157,7 +213,9 @@ export function createDuplicateRowsRule(): ValidationRule {
     id: "duplicate-rows",
     name: "Dubbele records",
     validate(ctx) {
-      const hash = rowHash(ctx.values);
+      const hash = ["Naam", "Adres", "Postcode"]
+        .map((k) => ctx.values[k]?.toLowerCase().trim() ?? "")
+        .join("|");
       if (!hash.replace(/\|/g, "")) return [];
       const existing = seen.get(hash) ?? [];
       existing.push(ctx.rowIndex);
@@ -174,50 +232,11 @@ export function createDuplicateRowsRule(): ValidationRule {
             confidence: 0.9,
             source: "duplicate-rows",
             reason: `Mogelijk duplicaat (ook op rij ${existing[0]! + 1})`,
-            requiresApproval: false,
+            requiresApproval: true,
           },
         ];
       }
       return [];
     },
   };
-}
-
-export const columnMismatchRule: ValidationRule = {
-  id: "column-mismatch",
-  name: "Kolomafwijking",
-  validate() {
-    return [];
-  },
-};
-
-export const validationRules: ValidationRule[] = [
-  requiredFieldsRule,
-  dutchPostcodeRule,
-  emailFormatRule,
-  phoneFormatRule,
-];
-
-export function runValidationRules(
-  ctx: ValidationContext,
-  rules: ValidationRule[] = validationRules
-): ProposedCorrection[] {
-  return rules.flatMap((rule) => rule.validate(ctx));
-}
-
-export function worstStatus(
-  statuses: CorrectionStatus[]
-): CorrectionStatus {
-  const priority: CorrectionStatus[] = [
-    "error",
-    "ambiguous",
-    "needs_review",
-    "missing_data",
-    "corrected",
-    "valid",
-  ];
-  for (const p of priority) {
-    if (statuses.includes(p)) return p;
-  }
-  return "valid";
 }

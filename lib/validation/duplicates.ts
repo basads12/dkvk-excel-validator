@@ -42,6 +42,6 @@ export function duplicateCorrectionForRow(
     confidence: 0.9,
     source: "duplicate-rows",
     reason: `Mogelijk duplicaat (ook op rij ${firstIndex + 1})`,
-    requiresApproval: false,
+    requiresApproval: true,
   };
 }

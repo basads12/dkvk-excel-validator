@@ -1,16 +1,12 @@
 import type { ProposedCorrection, RowStatus, TemplateColumnSchema } from "@/types";
 import { defaultAddressProvider } from "@/lib/address";
-import {
-  HIGH_CONFIDENCE_THRESHOLD,
-  type AddressValidationProvider,
-} from "@/lib/address/types";
+import { applyAddressCorrections } from "@/lib/correction/address-corrections";
 import {
   runValidationRules,
   validationRules,
   worstStatus,
 } from "@/lib/validation/rules";
 import { duplicateCorrectionForRow } from "@/lib/validation/duplicates";
-import { getRowValue } from "@/lib/template/columns";
 import { normalizeRowValues } from "@/lib/validation/normalize";
 
 export interface ProcessedRowResult {
@@ -34,7 +30,11 @@ export async function processRowWithAddressValidation(
   );
 
   if (duplicateFirstIndex !== undefined) {
-    const dup = duplicateCorrectionForRow(rowIndex, values, new Map([[rowIndex, duplicateFirstIndex]]));
+    const dup = duplicateCorrectionForRow(
+      rowIndex,
+      values,
+      new Map([[rowIndex, duplicateFirstIndex]])
+    );
     if (dup) corrections.push(dup);
   }
 
@@ -49,159 +49,8 @@ export async function processRowWithAddressValidation(
     corrections.length > 0 ? corrections.map((c) => c.status) : ["valid"]
   ) as RowStatus;
 
-  const rowData = { ...values };
-  for (const c of corrections) {
-    if (
-      c.status === "corrected" &&
-      c.confidence >= HIGH_CONFIDENCE_THRESHOLD &&
-      !c.requiresApproval
-    ) {
-      rowData[c.column] = c.proposedValue;
-    }
-  }
-
-  return { rowIndex, rowData, status, corrections };
+  // Nooit automatisch invullen — alles wacht op handmatige goedkeuring
+  return { rowIndex, rowData: values, status, corrections };
 }
 
-async function applyAddressCorrections(
-  rowIndex: number,
-  values: Record<string, string>,
-  provider: AddressValidationProvider
-): Promise<ProposedCorrection[]> {
-  const street = getRowValue(values, "Adres");
-  const houseNumber = getRowValue(values, "Nummer", "Huisnummer");
-  const postcode = getRowValue(values, "Postcode");
-  const city = getRowValue(values, "Woonplaats");
-
-  const corrections: ProposedCorrection[] = [];
-  const input = { street, houseNumber, postcode, city };
-
-  if (street) {
-    const suggestions = await provider.suggestCorrections(input);
-    const streetSuggestions = suggestions.filter(
-      (s) => s.street.toLowerCase() !== street.toLowerCase()
-    );
-
-    if (streetSuggestions.length === 1) {
-      const s = streetSuggestions[0]!;
-      if (s.confidence >= HIGH_CONFIDENCE_THRESHOLD) {
-        corrections.push({
-          column: "Adres",
-          rowIndex,
-          originalValue: street,
-          proposedValue: s.street,
-          status: "corrected",
-          confidence: s.confidence,
-          source: s.source,
-          reason: "Straatnaam gecorrigeerd op basis van betrouwbare bron",
-          requiresApproval: true,
-        });
-      }
-    } else if (streetSuggestions.length > 1) {
-      corrections.push({
-        column: "Adres",
-        rowIndex,
-        originalValue: street,
-        proposedValue: street,
-        status: "ambiguous",
-        confidence: 0.5,
-        source: streetSuggestions[0]?.source ?? "pdok-locatieserver",
-        reason: `Meerdere straatnamen mogelijk: ${streetSuggestions.map((s) => s.street).join(", ")}`,
-        requiresApproval: false,
-      });
-    }
-  }
-
-  const missingPostcode = !postcode.trim();
-  const missingCity = !city.trim();
-  if (missingPostcode || missingCity) {
-    const enrichment = await provider.enrichMissingFields(input);
-
-    if (enrichment.ambiguous) {
-      if (missingPostcode) {
-        corrections.push({
-          column: "Postcode",
-          rowIndex,
-          originalValue: "",
-          proposedValue: "",
-          status: "ambiguous",
-          confidence: enrichment.confidence,
-          source: enrichment.source,
-          reason: "Meerdere postcodes mogelijk — handmatige controle vereist",
-          requiresApproval: false,
-        });
-      }
-      if (missingCity) {
-        corrections.push({
-          column: "Woonplaats",
-          rowIndex,
-          originalValue: "",
-          proposedValue: "",
-          status: "ambiguous",
-          confidence: enrichment.confidence,
-          source: enrichment.source,
-          reason: "Meerdere plaatsen mogelijk — handmatige controle vereist",
-          requiresApproval: false,
-        });
-      }
-    } else if (enrichment.confidence >= HIGH_CONFIDENCE_THRESHOLD) {
-      if (missingPostcode && enrichment.fields.postcode) {
-        corrections.push({
-          column: "Postcode",
-          rowIndex,
-          originalValue: "",
-          proposedValue: enrichment.fields.postcode,
-          status: "corrected",
-          confidence: enrichment.confidence,
-          source: enrichment.source,
-          reason: "Postcode aangevuld op basis van straat/huisnummer/plaats",
-          requiresApproval: true,
-        });
-      }
-      if (missingCity && enrichment.fields.city) {
-        corrections.push({
-          column: "Woonplaats",
-          rowIndex,
-          originalValue: "",
-          proposedValue: enrichment.fields.city,
-          status: "corrected",
-          confidence: enrichment.confidence,
-          source: enrichment.source,
-          reason: "Plaats aangevuld op basis van postcode/huisnummer",
-          requiresApproval: true,
-        });
-      }
-    } else {
-      if (missingPostcode) {
-        corrections.push({
-          column: "Postcode",
-          rowIndex,
-          originalValue: "",
-          proposedValue: "",
-          status: "missing_data",
-          confidence: 0,
-          source: enrichment.source,
-          reason: "Ontbrekende postcode — geen betrouwbare bron gevonden",
-          requiresApproval: false,
-        });
-      }
-      if (missingCity) {
-        corrections.push({
-          column: "Woonplaats",
-          rowIndex,
-          originalValue: "",
-          proposedValue: "",
-          status: "missing_data",
-          confidence: 0,
-          source: enrichment.source,
-          reason: "Ontbrekende plaats — geen betrouwbare bron gevonden",
-          requiresApproval: false,
-        });
-      }
-    }
-  }
-
-  return corrections;
-}
-
-export { HIGH_CONFIDENCE_THRESHOLD };
+export { HIGH_CONFIDENCE_THRESHOLD } from "@/lib/address/types";
