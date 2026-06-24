@@ -5,6 +5,7 @@ import {
   docsToSuggestions,
   filterRelevantDocs,
   formatHouseNumber,
+  parseHouseNumberForFilter,
 } from "@/lib/address/pdok-client";
 import { normalizePostcode } from "@/lib/validation/normalize";
 import { PdokAddressValidationProvider } from "@/lib/address/pdok-provider";
@@ -28,6 +29,28 @@ describe("pdok client", () => {
     expect(q.q).toContain("Oudegracht");
     expect(q.fq).toContain("type:adres");
     expect(q.fq).toContain("huisnummer:123");
+  });
+
+  it("puts alphanumeric house numbers in q, not fq", () => {
+    const q = buildPdokQuery({
+      street: "Hoofdstraat",
+      houseNumber: "12a",
+      city: "Amsterdam",
+    });
+    expect(q.fq).toContain("huisnummer:12");
+    expect(q.q).toContain("12a");
+    expect(q.fq.some((f) => f.includes("12a"))).toBe(false);
+  });
+
+  it("does not add invalid huisnummer fq for text-only values", () => {
+    expect(parseHouseNumberForFilter("nvt")).toBeNull();
+    const q = buildPdokQuery({
+      street: "Hoofdstraat",
+      houseNumber: "nvt",
+      city: "Utrecht",
+    });
+    expect(q.fq.some((f) => f.startsWith("huisnummer:"))).toBe(false);
+    expect(q.q).toContain("nvt");
   });
 
   it("filters docs by city and house number", () => {

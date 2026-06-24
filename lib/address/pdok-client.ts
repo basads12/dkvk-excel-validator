@@ -89,6 +89,20 @@ export function matchesInput(doc: PdokDoc, input: AddressInput): boolean {
   return true;
 }
 
+const PDOK_MAX_QUERY_LENGTH = 400;
+
+/** Alleen puur numerieke huisnummers mogen in Solr fq=huisnummer (12a geeft 400). */
+export function parseHouseNumberForFilter(
+  houseNumber: string
+): number | null {
+  const trimmed = houseNumber.trim();
+  if (!trimmed) return null;
+  const match = trimmed.match(/^(\d+)/);
+  if (!match) return null;
+  const num = parseInt(match[1]!, 10);
+  return Number.isFinite(num) ? num : null;
+}
+
 export function buildPdokQuery(input: AddressInput): {
   q?: string;
   fq: string[];
@@ -98,17 +112,28 @@ export function buildPdokQuery(input: AddressInput): {
 
   if (input.street) qParts.push(input.street.trim());
   if (input.houseNumber) {
-    fq.push(`huisnummer:${parseInt(input.houseNumber, 10) || input.houseNumber}`);
+    const hn = input.houseNumber.trim();
+    const numeric = parseHouseNumberForFilter(hn);
+    if (numeric !== null) {
+      fq.push(`huisnummer:${numeric}`);
+      if (hn !== String(numeric)) {
+        qParts.push(hn);
+      }
+    } else {
+      qParts.push(hn);
+    }
   }
   if (input.postcode) {
     fq.push(`postcode:${normalizePostcodeKey(input.postcode)}`);
   }
   if (input.city) qParts.push(input.city.trim());
 
-  return {
-    q: qParts.length > 0 ? qParts.join(" ") : undefined,
-    fq,
-  };
+  const q =
+    qParts.length > 0
+      ? qParts.join(" ").slice(0, PDOK_MAX_QUERY_LENGTH)
+      : undefined;
+
+  return { q, fq };
 }
 
 export async function searchPdok(
@@ -136,6 +161,10 @@ export async function searchPdok(
     });
 
     if (!res.ok) {
+      // Ongeldige invoer (bijv. rare huisnummers) — geen harde fout, rij gaat naar review
+      if (res.status === 400) {
+        return { docs: [], maxScore: 0 };
+      }
       throw new Error(`PDOK API fout: ${res.status}`);
     }
 
